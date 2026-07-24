@@ -1,70 +1,52 @@
 /**
- * Frigate event types
+ * Frigate review item types
+ *
+ * A "review item" (Frigate's /api/review) groups one or more tracked objects
+ * (events) into a single segment classified by severity ("alert" | "detection").
+ * This matches what the Frigate UI's Review page shows, unlike the lower-level
+ * /api/events data which lists each tracked object separately.
  */
 
-export type FrigateBoundingBox = [number, number, number, number];
-export type FrigatePathPoint = [[number, number], number];
-
-export interface FrigateSnapshotData {
-    box?: FrigateBoundingBox;
-    region?: FrigateBoundingBox;
+export interface FrigateReviewData {
+    /** Event IDs of the tracked objects that make up this review item. */
+    detections: string[];
+    /** Object labels seen during the segment, e.g. ["person", "car"]. */
+    objects: string[];
+    /** Recognized sub-labels (e.g. license plates, face names). */
+    sub_labels?: string[];
+    /** Zones the activity occurred in. */
+    zones: string[];
+    /** Audio detection types. */
+    audio: string[];
 }
 
-export interface FrigateEventData {
-    box?: FrigateBoundingBox;
-    region?: FrigateBoundingBox;
-    path_data?: FrigatePathPoint[];
-    snapshot?: FrigateSnapshotData | null;
-    top_score?: number | null;
-    score?: number | null;
-    description?: string | null;
-}
-
-export interface FrigateEvent {
+export interface FrigateReview {
     id: string;
     camera: string;
-    label: string;
-    sub_label: string | null;
     start_time: number;
     end_time: number | null;
-    top_score: number | null;
-    has_clip: boolean;
-    has_snapshot: boolean;
-    zones: string[];
-    retain_indefinitely?: boolean;
-    box?: FrigateBoundingBox;
-    region?: FrigateBoundingBox;
-    data?: FrigateEventData | null;
-    description?: string | null;
+    /** "alert" | "detection" (older data may also carry "motion"). */
+    severity: string;
+    /** e.g. /media/frigate/clips/review/thumb-<camera>-<id>.webp */
+    thumb_path: string;
+    has_been_reviewed?: boolean;
+    data: FrigateReviewData;
 }
 
-export interface FrigateEventChange {
-    before: {
-        camera: string;
-        label: string;
-        current_zones: string[];
-        has_clip: boolean;
-        has_snapshot: boolean;
-    };
-    after: {
-        camera: string;
-        label: string;
-        current_zones: string[];
-        has_clip: boolean;
-        has_snapshot: boolean;
-    };
+export interface FrigateReviewChange {
     type: 'new' | 'update' | 'end';
+    before: FrigateReview;
+    after: FrigateReview;
 }
 
-export interface NativeFrigateEventQuery {
+export interface NativeFrigateReviewQuery {
     instance_id?: string;
     cameras?: string[];
     labels?: string[];
     zones?: string[];
+    severity?: string;
     after?: number;
     before?: number;
     limit?: number;
-    has_clip?: boolean;
-    has_snapshot?: boolean;
-    favorites?: boolean;
+    reviewed?: boolean;
 }

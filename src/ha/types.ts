@@ -13,6 +13,11 @@ export interface HomeAssistant {
     config: {
         time_zone: string;
     };
+    locale?: {
+        language: string;
+        // 'language' / 'system' = auto-detect; '12' = AM/PM; '24' = 24-hour
+        time_format: 'language' | 'system' | '12' | '24';
+    };
     states: Record<string, { state: string; last_changed?: string; attributes?: Record<string, unknown> }>;
     callWS: <T>(msg: MessageBase) => Promise<T>;
     hassUrl: (path?: string) => string;

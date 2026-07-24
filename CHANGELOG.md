@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.0] - 2026-07-24
+Forked from [saihgupr/frigate-events-card](https://github.com/saihgupr/frigate-events-card) and reworked into **Frigate Review Card** — effectively a new card. The custom element, the **entire** configuration schema, and the underlying data source have all changed, so an existing `frigate-events-card` configuration will **not** work as-is. You'll need to reconfigure — the new visual editor makes this easy, or map your old keys using the table in the README. Highlights:
+
+- **Breaking:** The card now displays Frigate **review items** (`/api/review`) instead of individual events (`/api/events`), so a single alert appears once. Requires the Frigate integration's `frigate/reviews/get` WebSocket command (Frigate 0.14+).
+- **Breaking:** Renamed the custom element to `frigate-review-card` (was `frigate-events-card`). Update your dashboards to `type: custom:frigate-review-card`.
+- **Breaking:** Config keys were renamed to a clean, flat scheme: `instance` (was `frigate_client_id`); the item family `items_visible` / `items_limit` / `items_max_age_hours` / `items_offset`; plus `scrollable`, `reverse_order`, `autoplay_on_hover`, `popup_play_clip`, the `popup_show_*` popup toggles, and `daily_reset_time`. `items_limit` (max number) and `items_max_age_hours` (max age) are independent maximums you can combine. The unused `title` option was dropped. See the README for the full list.
+- Added: a visual (UI) editor, so the card can be configured from the dashboard without editing YAML.
+- Added: `severity` option (`alert` | `detection` | `all`, default `alert`) to choose which review items are shown.
+- Added: `items_max_age_hours` to show review items from the last N hours (max age). Combine with `items_limit`, or use alone (no count cap) for a pure time window.
+- Fixed: load review items across their full retention, not just the last 24 hours. Frigate's `/api/review` defaults to a 24-hour window when no `after` is given, so the card now passes one — results are bounded by `items_limit` / `items_max_age_hours` instead.
+- Changed: The detail popup uses Home Assistant's native adaptive dialog (`ha-adaptive-dialog`) — a drag-to-dismiss bottom sheet on mobile and a centered dialog on desktop (falls back to `ha-dialog` on HA < 2026.3). The header title is the review's date and time (12/24-hour per your HA preference), with the camera name as a breadcrumb link above it (opening the camera's more-info when available); zones and duration appear below the clip.
+- Changed: Clips play the camera recording for the review's full time span, so one alert plays as a single clip covering all its detections. The recording proxy requires auth, so the URL is signed on demand via `auth/sign_path` and cached per review (requires retained recordings). Tile/modal thumbnails come from the review's primary detection via the unauthenticated notifications proxy.
+- Removed: event-only options and behavior with no review equivalent — `show_bounding_box` (bounding-box/crop/timestamp snapshot overlays), object auto-tracking/panning (`tracking_pan_delay`, `tracking_smoothing`), `show_accuracy` (no review score), `show_description` (no review description), and the `video_start_skip_seconds` / `video_end_skip_seconds` clip-seek options.
+
 ## [2.1.61] - 2026-06-23
 - Added: `show_bounding_box` configuration option (default: `true`) to allow toggling bounding boxes on event snapshots.
 - Improved: Implemented dynamic snapshot cache-busting using the event's `end_time` to automatically load the finalized, clean snapshot when an active event completes.

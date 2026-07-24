@@ -1,82 +1,91 @@
 /**
- * Frigate API client for Home Assistant
+ * Frigate API client for Home Assistant (review items)
  */
 import { HomeAssistant } from '../ha/types';
-import { FrigateEvent, FrigateEventChange, NativeFrigateEventQuery } from './types';
+import { FrigateReview, FrigateReviewChange, NativeFrigateReviewQuery } from './types';
 
 /**
- * Get events from Frigate via Home Assistant WebSocket
+ * Get review items from Frigate via Home Assistant WebSocket.
+ * Maps to Frigate's /api/review endpoint.
  */
-export async function getEvents(
+export async function getReviews(
     hass: HomeAssistant,
-    params?: NativeFrigateEventQuery
-): Promise<FrigateEvent[]> {
+    params?: NativeFrigateReviewQuery
+): Promise<FrigateReview[]> {
     const response = await hass.callWS<string>({
-        type: 'frigate/events/get',
+        type: 'frigate/reviews/get',
         ...params,
     });
 
-    // Response comes as JSON string, parse it
-    return JSON.parse(response) as FrigateEvent[];
+    // The integration returns the raw API body as a JSON string (decode_json=False).
+    return JSON.parse(response) as FrigateReview[];
 }
 
 /**
- * Get thumbnail URL for an event
+ * Thumbnail for a review item: served from one of its detection events
+ * (review.data.detections) via the integration's "notifications" proxy, which
+ * allows unauthenticated access, so it loads in an <img> without an auth token.
  */
-export function getEventThumbnailURL(clientId: string, eventId: string): string {
-    return `/api/frigate/${encodeURIComponent(clientId)}/thumbnail/${encodeURIComponent(eventId)}`;
-}
-
-/**
- * Get snapshot URL for an event
- */
-export function getEventSnapshotURL(
+export function getReviewSnapshotURL(
     clientId: string,
     eventId: string,
-    options?: { bbox?: boolean; crop?: boolean; timestamp?: boolean; cacheBust?: string | number }
+    cacheBust?: string | number
 ): string {
-    const params = new URLSearchParams();
-    if (options?.bbox) params.set('bbox', '1');
-    if (options?.crop) params.set('crop', '1');
-    if (options?.timestamp) params.set('timestamp', '1');
-    if (options?.cacheBust) params.set('h', String(options.cacheBust));
-
-    const queryString = params.toString();
-    return `/api/frigate/${encodeURIComponent(clientId)}/notifications/${encodeURIComponent(eventId)}/snapshot.jpg${queryString ? '?' + queryString : ''}`;
+    const query = cacheBust ? `?h=${encodeURIComponent(String(cacheBust))}` : '';
+    return `/api/frigate/${encodeURIComponent(clientId)}/notifications/${encodeURIComponent(eventId)}/snapshot.jpg${query}`;
 }
 
 /**
- * Get video clip URL for an event
+ * Full review clip: the camera recording for the review's [start, end] span,
+ * via the integration's "recording" proxy (returns an mp4). This proxy REQUIRES
+ * authentication, so the URL must be signed with signPath() before it can be
+ * used in a <video> tag. Requires recordings to be retained for the range.
  */
-export function getEventClipURL(clientId: string, eventId: string): string {
-    return `/api/frigate/${encodeURIComponent(clientId)}/notifications/${encodeURIComponent(eventId)}/clip.mp4`;
+export function getReviewClipURL(
+    clientId: string,
+    camera: string,
+    start: number,
+    end: number
+): string {
+    return `/api/frigate/${encodeURIComponent(clientId)}/recording/${encodeURIComponent(camera)}/start/${start}/end/${end}`;
 }
 
 /**
- * Get HLS playlist URL for an event (Safari/iOS fallback)
+ * Sign a Home Assistant path so it can be requested without an auth header
+ * (needed for the authenticated "recording" proxy). Returns a relative URL with
+ * an `?authSig=...` token valid for `expires` seconds.
  */
-export function getEventHlsURL(clientId: string, eventId: string): string {
-    return `/api/frigate/${encodeURIComponent(clientId)}/notifications/${encodeURIComponent(eventId)}/master.m3u8`;
+export async function signPath(
+    hass: HomeAssistant,
+    path: string,
+    expires = 12 * 60 * 60
+): Promise<string> {
+    const result = await hass.callWS<{ path: string }>({
+        type: 'auth/sign_path',
+        path,
+        expires,
+    });
+    return result.path;
 }
 
 /**
- * Subscribe to real-time Frigate events
+ * Subscribe to real-time Frigate review updates.
  */
-export async function subscribeToEvents(
+export async function subscribeToReviews(
     hass: HomeAssistant,
     instanceId: string,
-    callback: (event: FrigateEventChange) => void
+    callback: (change: FrigateReviewChange) => void
 ): Promise<() => void> {
     const unsubscribe = await hass.connection.subscribeMessage<string>(
         (data) => {
             try {
-                const parsed = JSON.parse(data) as FrigateEventChange;
+                const parsed = (typeof data === 'string' ? JSON.parse(data) : data) as FrigateReviewChange;
                 callback(parsed);
             } catch (e) {
-                console.warn('Failed to parse Frigate event:', e);
+                console.warn('Failed to parse Frigate review:', e);
             }
         },
-        { type: 'frigate/events/subscribe', instance_id: instanceId }
+        { type: 'frigate/reviews/subscribe', instance_id: instanceId }
     );
 
     return unsubscribe;
