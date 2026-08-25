@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+- Fixed: only load a tile's clip once the pointer has rested on it (400 ms). Sweeping the mouse across the gallery used to start — and immediately abort — one full clip download per tile passed over. Each of those is an on-demand `ffmpeg` concat on the Frigate side, and Frigate serves its whole API from a single event loop, so a few of them at once could stall every endpoint (including the Frigate integration's `/api/stats` poll, which briefly marks all Frigate camera entities unavailable).
+- Fixed: re-sign a review's clip URL once the review closes. For a review still in progress `end_time` is `null`, so the clip range ends at the current wall-clock time; that URL was then cached for 12 hours, leaving the clip permanently truncated at the moment it was first hovered.
+
 ## [3.0.0] - 2026-07-24
 Forked from [saihgupr/frigate-events-card](https://github.com/saihgupr/frigate-events-card) and reworked into **Frigate Review Card** — effectively a new card. The custom element, the **entire** configuration schema, and the underlying data source have all changed, so an existing `frigate-events-card` configuration will **not** work as-is. You'll need to reconfigure — the new visual editor makes this easy, or map your old keys using the table in the README. Highlights:
 

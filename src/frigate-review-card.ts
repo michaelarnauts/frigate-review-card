@@ -19,6 +19,15 @@ const FALLBACK_POLL_INTERVAL = 10000; // 10 seconds
 // How long a signed recording-clip URL stays valid (seconds).
 const SIGN_CLIP_TTL_SECONDS = 12 * 60 * 60;
 
+/**
+ * How long the pointer must rest on a tile before its clip is loaded.
+ * Without this, sweeping the mouse across the gallery starts (and immediately
+ * aborts) one full clip download per tile passed over. Each of those is an
+ * on-demand ffmpeg concat on the Frigate side, and Frigate serves its API from
+ * a single event loop, so a handful of them at once can stall every endpoint.
+ */
+const HOVER_INTENT_MS = 400;
+
 // Default maximum number of review items to load when neither items_limit nor
 // items_max_age_hours is set.
 const DEFAULT_ITEMS_COUNT = 20;
@@ -76,7 +85,8 @@ export class FrigateReviewCard extends LitElement {
   private _unsubscribe?: () => void;
   private _pollInterval?: number;
   private _boundVisibilityHandler?: () => void;
-  private _signedClips = new Map<string, { url: string; ts: number }>();
+  private _signedClips = new Map<string, { url: string; ts: number; pending: boolean }>();
+  private _hoverIntentTimer?: number;
 
   /**
    * Calculate the daily reset timestamp based on the configured time.
@@ -162,6 +172,7 @@ export class FrigateReviewCard extends LitElement {
       document.removeEventListener('visibilitychange', this._boundVisibilityHandler);
       this._boundVisibilityHandler = undefined;
     }
+    this._clearHoverIntent();
   }
 
   /**
@@ -328,8 +339,27 @@ export class FrigateReviewCard extends LitElement {
     // the popup — we want the tap to only open the popup.
     if (event && event.pointerType !== 'mouse') return;
     if (!this._config?.autoplay_on_hover) return;
-    this._hoveredReviewId = review.id;
-    this._ensureSignedClip(review);
+
+    // Wait for the pointer to settle before fetching anything, so merely moving
+    // the mouse across the gallery costs nothing. _onReviewLeave cancels this.
+    this._clearHoverIntent();
+    this._hoverIntentTimer = window.setTimeout(() => {
+      this._hoverIntentTimer = undefined;
+      this._hoveredReviewId = review.id;
+      this._ensureSignedClip(review);
+    }, HOVER_INTENT_MS);
+  }
+
+  private _onReviewLeave(): void {
+    this._clearHoverIntent();
+    this._hoveredReviewId = undefined;
+  }
+
+  private _clearHoverIntent(): void {
+    if (this._hoverIntentTimer !== undefined) {
+      clearTimeout(this._hoverIntentTimer);
+      this._hoverIntentTimer = undefined;
+    }
   }
 
   private _handleModalClose(): void {
@@ -370,8 +400,14 @@ export class FrigateReviewCard extends LitElement {
    */
   private async _ensureSignedClip(review: FrigateReview): Promise<string | undefined> {
     const nowSec = Date.now() / 1000;
+    // A review that is still in progress has no end_time, so _getClipRange ends
+    // the range at the current wall-clock time. That URL is only valid for as
+    // long as the review is open: cache it, but re-sign once the review closes,
+    // otherwise the clip stays truncated at the moment it was first hovered.
+    const isPending = review.end_time == null;
     const cached = this._signedClips.get(review.id);
-    if (cached && nowSec - cached.ts < SIGN_CLIP_TTL_SECONDS - 120) {
+    const staleWhilePending = cached?.pending && !isPending;
+    if (cached && !staleWhilePending && nowSec - cached.ts < SIGN_CLIP_TTL_SECONDS - 120) {
       return cached.url;
     }
     if (!this.hass) return cached?.url;
@@ -382,7 +418,7 @@ export class FrigateReviewCard extends LitElement {
 
     try {
       const url = await signPath(this.hass, path, SIGN_CLIP_TTL_SECONDS);
-      this._signedClips.set(review.id, { url, ts: nowSec });
+      this._signedClips.set(review.id, { url, ts: nowSec, pending: isPending });
       this.requestUpdate();
       return url;
     } catch (e) {
@@ -538,7 +574,7 @@ export class FrigateReviewCard extends LitElement {
       <div class="event"
         @click=${() => this._handleReviewClick(review)}
         @pointerenter=${(e: PointerEvent) => this._onReviewHover(review, e)}
-        @pointerleave=${() => { this._hoveredReviewId = undefined; }}
+        @pointerleave=${() => this._onReviewLeave()}
         style="position: relative;"
       >
         ${thumbnailUrl
