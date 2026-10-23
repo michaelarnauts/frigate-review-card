@@ -402,6 +402,21 @@ export class FrigateReviewCard extends LitElement {
   }
 
   /**
+   * Start the popup clip with sound, like the live camera view. The popup opens
+   * on a click, so browsers normally allow it; if one still refuses unmuted
+   * playback, fall back to muted rather than not playing at all. Hover
+   * previews on the tiles stay muted.
+   */
+  private _startPopupClip = (ev: Event): void => {
+    const video = ev.currentTarget as HTMLVideoElement;
+    video.play().catch((err: DOMException) => {
+      if (err?.name !== 'NotAllowedError') return;
+      video.muted = true;
+      video.play().catch(() => undefined);
+    });
+  };
+
+  /**
    * Recording time range [start, end] covering the whole review segment, padded
    * on both sides like Frigate's Review page. Never ends in the future.
    */
@@ -662,7 +677,7 @@ export class FrigateReviewCard extends LitElement {
         : html`<span class="breadcrumb">${cameraName}</span>`;
 
     const media = showVideo
-      ? html`<video autoplay muted controls playsinline>
+      ? html`<video controls playsinline @canplay=${{ handleEvent: this._startPopupClip, once: true }}>
                <source src="${signedClip}" type="video/mp4">
              </video>`
       : thumbnailUrl
