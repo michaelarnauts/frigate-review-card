@@ -159,7 +159,7 @@ The most common settings to get you started:
 ### Media & Playback
 
 - **Tile / popup thumbnail**: taken from the review's primary detection via the integration's *notifications* proxy, which allows unauthenticated access — so images load in `<img>` without a token.
-- **Clip playback** (`popup_play_clip: true`, and hover previews): the camera **recording** for the review's full time span, so a single alert plays as one clip covering all of its detections. The recording proxy requires authentication, so the card signs the URL on demand via Home Assistant's `auth/sign_path` (the same `?authSig=` mechanism used for camera thumbnails) and caches it per review.
+- **Clip playback** (`popup_play_clip: true`, and hover previews): the camera **recording** for the review's full time span plus 4 seconds before and after (the same padding as Frigate's Review page), so a single alert plays as one clip covering all of its detections. The recording proxy requires authentication, so the card signs the URL on demand via Home Assistant's `auth/sign_path` (the same `?authSig=` mechanism used for camera thumbnails) and caches it per review.
 
 > Because clips use the recording, **recordings must be retained** for the review's camera/time range. If you only keep snapshots, set `popup_play_clip: false` to show thumbnails only.
 

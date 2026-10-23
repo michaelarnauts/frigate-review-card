@@ -28,6 +28,22 @@ const SIGN_CLIP_TTL_SECONDS = 12 * 60 * 60;
  */
 const HOVER_INTENT_MS = 400;
 
+/**
+ * Seconds of recording added before and after a review item's own time span,
+ * the same padding Frigate's own Review page uses (REVIEW_PADDING in its web
+ * UI). A review only covers the time a tracked object was in a required zone,
+ * so without it a clip starts once someone is already halfway up the drive and
+ * stops the moment the tracker loses them.
+ */
+const REVIEW_PADDING_SECONDS = 4;
+
+/**
+ * How long after a review's padded end Frigate may still be finishing the
+ * recording segments that cover it. Until then a clip can come back short, so
+ * its signed URL is treated as provisional and re-signed afterwards.
+ */
+const CLIP_SETTLE_SECONDS = 30;
+
 // Default maximum number of review items to load when neither items_limit nor
 // items_max_age_hours is set.
 const DEFAULT_ITEMS_COUNT = 20;
@@ -385,10 +401,15 @@ export class FrigateReviewCard extends LitElement {
     return review.data?.detections?.find(Boolean);
   }
 
-  /** Recording time range [start, end] covering the whole review segment. */
+  /**
+   * Recording time range [start, end] covering the whole review segment, padded
+   * on both sides like Frigate's Review page. Never ends in the future.
+   */
   private _getClipRange(review: FrigateReview): { start: number; end: number } {
-    const start = Math.max(0, review.start_time);
-    const end = review.end_time ?? Date.now() / 1000;
+    const nowSec = Date.now() / 1000;
+    const start = Math.max(0, review.start_time - REVIEW_PADDING_SECONDS);
+    const end =
+      review.end_time == null ? nowSec : Math.min(review.end_time + REVIEW_PADDING_SECONDS, nowSec);
     return { start, end };
   }
 
@@ -401,10 +422,13 @@ export class FrigateReviewCard extends LitElement {
   private async _ensureSignedClip(review: FrigateReview): Promise<string | undefined> {
     const nowSec = Date.now() / 1000;
     // A review that is still in progress has no end_time, so _getClipRange ends
-    // the range at the current wall-clock time. That URL is only valid for as
-    // long as the review is open: cache it, but re-sign once the review closes,
-    // otherwise the clip stays truncated at the moment it was first hovered.
-    const isPending = review.end_time == null;
+    // the range at the current wall-clock time. Even once it closes, the padding
+    // after it and the last recording segments only exist some seconds later.
+    // Until then the URL is provisional: cache it, but re-sign once the clip is
+    // complete, otherwise it stays truncated at the moment it was first hovered.
+    const isPending =
+      review.end_time == null ||
+      nowSec < review.end_time + REVIEW_PADDING_SECONDS + CLIP_SETTLE_SECONDS;
     const cached = this._signedClips.get(review.id);
     const staleWhilePending = cached?.pending && !isPending;
     if (cached && !staleWhilePending && nowSec - cached.ts < SIGN_CLIP_TTL_SECONDS - 120) {
