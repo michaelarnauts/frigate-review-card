@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- Changed: the popup clip now starts with sound, like the live camera view. If the browser refuses unmuted playback it falls back to muted. Hover previews on the tiles stay muted.
 - Changed: clips now include 4 seconds of recording before and after the review item, like Frigate's own Review page. A review only covers the time a tracked object is in a required zone, so clips used to start with the person already halfway in and stop the moment the tracker lost them. A clip opened in the first ~30 seconds after the review closes is re-signed once the trailing recording exists.
 - Fixed: only load a tile's clip once the pointer has rested on it (400 ms). Sweeping the mouse across the gallery used to start — and immediately abort — one full clip download per tile passed over. Each of those is an on-demand `ffmpeg` concat on the Frigate side, and Frigate serves its whole API from a single event loop, so a few of them at once could stall every endpoint (including the Frigate integration's `/api/stats` poll, which briefly marks all Frigate camera entities unavailable).
 - Fixed: re-sign a review's clip URL once the review closes. For a review still in progress `end_time` is `null`, so the clip range ends at the current wall-clock time; that URL was then cached for 12 hours, leaving the clip permanently truncated at the moment it was first hovered.
